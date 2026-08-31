@@ -1,0 +1,3 @@
+you should pasted fullchain.pem and privkey.pem files here and assign then into treafik or nginx service ...
+
+good louck

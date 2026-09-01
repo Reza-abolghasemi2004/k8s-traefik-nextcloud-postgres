@@ -27,9 +27,9 @@ Deploy the following architecture on a single-node Kubernetes cluster based on K
 
 | Item | Value |
 |---|---|
-| Nextcloud domain | `cloud.domain.com` |
-| Traefik Dashboard domain | `traefik.domain.com` |
-| Server IP | `x.x.x.x` |
+| Nextcloud domain | `cloud.<your-domain>.tld` |
+| Traefik Dashboard domain | `traefik.<your-domain>.tld` |
+| Server IP | `<SERVER_IP>` |
 | Kubernetes | K3s v1.36.3+k3s1 |
 | OS | Ubuntu 24.04.4 LTS |
 | Container Runtime | containerd |
@@ -44,7 +44,7 @@ Deploy the following architecture on a single-node Kubernetes cluster based on K
                                 Internet
                                     │
                      ┌──────────────▼──────────────┐
-                     │           x.x.x.x           │
+                     │        <SERVER_IP>           │
                      └──────────────┬──────────────┘
                                     │
                          HTTP 80 / HTTPS 443
@@ -57,7 +57,7 @@ Deploy the following architecture on a single-node Kubernetes cluster based on K
                                    │
               ┌────────────────────┴────────────────────┐
               ▼                                         ▼
-      traefik.domain.com                       cloud.domain.com
+ traefik.<your-domain>.tld                cloud.<your-domain>.tld
    Path: /dashboard/                        Nextcloud IngressRoute
               │                                        │
               ▼                                        ▼
@@ -155,7 +155,7 @@ A test `IngressRoute` was defined for `nextcloud.local`, and a `curl` request (w
 ### 8. `405` error when testing the Dashboard
 
 ```bash
-curl -I -H "Host: dashboard.localhost" http://81.12.50.30
+curl -I -H "Host: dashboard.localhost" http://<SERVER_IP>
 ```
 
 **Cause:** The `HEAD` request (triggered by the `-I` flag) wasn't supported by the Dashboard.
@@ -166,7 +166,7 @@ curl -I -H "Host: dashboard.localhost" http://81.12.50.30
 
 ### 9. Expired certificate
 
-An SSL check revealed the previous certificate had expired (`notAfter=Aug 25 2026`). A new **wildcard** certificate (`*.domain.com`) from Let's Encrypt was obtained and put in place.
+An SSL check revealed the previous certificate had expired (`notAfter=Aug 25 2026`). A new **wildcard** certificate (`*.<your-domain>.tld`) from Let's Encrypt was obtained and put in place.
 
 ---
 
@@ -211,7 +211,7 @@ The issue was resolved by verifying the `web` (HTTP) and `websecure` (HTTPS) ent
 The root path (`/`) is not a valid route for the Dashboard. The correct access URL is:
 
 ```text
-https://traefik.domain.com/dashboard/
+https://traefik.<your-domain>.tld/dashboard/
 ```
 
 ---
@@ -224,8 +224,8 @@ Since the connection between Traefik and Nextcloud inside the cluster was plain 
 
 ```bash
 php occ config:system:set overwriteprotocol --value=https
-php occ config:system:set overwritehost --value=cloud.domain.com
-php occ config:system:set overwrite.cli.url --value=https://cloud.domain.com
+php occ config:system:set overwritehost --value=cloud.<your-domain>.tld
+php occ config:system:set overwrite.cli.url --value=https://cloud.<your-domain>.tld
 ```
 
 ---

@@ -1,8 +1,8 @@
-# گزارش پیاده‌سازی Nextcloud روی Kubernetes با Traefik
+# Nextcloud Deployment on Kubernetes with Traefik — Project Report
 
-## هدف پروژه
+## Project Goal
 
-پیاده‌سازی معماری زیر روی یک Kubernetes تک‌نودی مبتنی بر K3s:
+Deploy the following architecture on a single-node Kubernetes cluster based on K3s:
 
 ```text
                          Internet
@@ -23,22 +23,22 @@
                                       PostgreSQL
 ```
 
-## مشخصات فنی
+## Technical Specs
 
-| مورد | مقدار |
+| Item | Value |
 |---|---|
-| دامنه Nextcloud | `cloud.rezaabolghasemi.ir` |
-| دامنه Traefik Dashboard | `traefik.rezaabolghasemi.ir` |
-| IP سرور | `81.12.50.30` |
+| Nextcloud domain | `cloud.rezaabolghasemi.ir` |
+| Traefik Dashboard domain | `traefik.rezaabolghasemi.ir` |
+| Server IP | `81.12.50.30` |
 | Kubernetes | K3s v1.36.3+k3s1 |
-| سیستم‌عامل | Ubuntu 24.04.4 LTS |
+| OS | Ubuntu 24.04.4 LTS |
 | Container Runtime | containerd |
-| Traefik | نسخه 3.7.12 |
+| Traefik | v3.7.12 |
 | StorageClass | local-path (WaitForFirstConsumer) |
 
 ---
 
-## معماری نهایی
+## Final Architecture
 
 ```text
                                 Internet
@@ -76,139 +76,139 @@
 
 ---
 
-## مشکلات پیش‌آمده و راه‌حل‌ها
+## Issues Encountered and Solutions
 
-### ۱. عدم آمادگی Node (`NotReady`)
+### 1. Node stuck in `NotReady`
 
-در شروع کار، وضعیت Node به‌صورت زیر بود:
+At the start, the node status was:
 
 ```text
 NAME     STATUS     ROLES
 ubuntu   NotReady   control-plane
 ```
 
-با بررسی `kubectl describe node` و اطمینان از سالم بودن Memory/Disk/PID Pressure، Node به وضعیت `Ready` بازگشت.
+By checking `kubectl describe node` and confirming Memory/Disk/PID Pressure were healthy, the node returned to `Ready`.
 
 ---
 
-### ۲. Traefik پیش‌فرض K3s فعال نبود
+### 2. Default K3s Traefik was not functional
 
-- Pod مربوط به Traefik در `kube-system` وجود نداشت.
-- Service وجود داشت اما `Endpoints` آن خالی بود (`<none>`).
-- بررسی `helmcharts` نشان داد HelmChart و Manifest وجود دارند، اما Deployment واقعی ساخته نشده بود.
+- No Traefik pod existed in `kube-system`.
+- The Service existed, but its `Endpoints` were empty (`<none>`).
+- Checking `helmcharts` showed the HelmChart and manifest existed, but no actual Deployment had been created.
 
-**نتیجه:** وجود Service به معنای سالم بودن سرویس نیست؛ باید Pod و Endpoint هم بررسی شوند.
+**Takeaway:** A Service existing does not mean the service is healthy — Pods and Endpoints must also be checked.
 
-**راه‌حل:** نصب مستقل Traefik از طریق Helm، به‌جای تکیه بر Traefik نیمه‌فعال پیش‌فرض K3s.
+**Fix:** Install a standalone Traefik via Helm instead of relying on the half-active default K3s Traefik.
 
 ---
 
-### ۳. خطای Helm در نصب مجدد
+### 3. Helm error on reinstall
 
 ```text
 cannot reuse a name that is still in use
 ```
 
-**علت:** Release با نام `traefik` از قبل وجود داشت.
+**Cause:** A release named `traefik` already existed.
 
-**راه‌حل:** استفاده از `helm upgrade` به‌جای `helm install` برای نصب‌های بعدی.
-
----
-
-### ۴. هشدار Deprecation در Gateway API
-
-پس از نصب Traefik، هشدار داده شد که CRDهای Gateway API در آینده همراه Chart ارائه نخواهند شد.
-
-**راه‌حل:** نصب مستقیم Gateway API از مخزن رسمی (نسخه v1.5.1).
+**Fix:** Use `helm upgrade` instead of `helm install` for subsequent installs.
 
 ---
 
-### ۵. Pending ماندن PVC
+### 4. Gateway API deprecation warning
 
-PVCهای PostgreSQL و Nextcloud پس از ساخت در وضعیت `Pending` قرار داشتند.
+After installing Traefik, a warning appeared that Gateway API CRDs would no longer ship with the chart in future versions.
 
-**علت:** StorageClass از حالت `WaitForFirstConsumer` استفاده می‌کند؛ یعنی PV تا زمان Schedule شدن Pod مصرف‌کننده ساخته نمی‌شود.
-
-**نتیجه:** `Pending` بودن PVC در این حالت طبیعی است و لزوماً خطا نیست.
+**Fix:** Installed the Gateway API directly from the official release (v1.5.1).
 
 ---
 
-### ۶. تست اتصال داخلی (DNS و شبکه)
+### 5. PVC stuck in `Pending`
 
-با اجرای یک Pod آزمایشی BusyBox، اتصال به سرویس‌های داخلی تست شد:
+The PVCs for PostgreSQL and Nextcloud remained in `Pending` state after creation.
+
+**Cause:** The StorageClass uses `WaitForFirstConsumer` mode, meaning the PV isn't provisioned until a consuming Pod is scheduled.
+
+**Takeaway:** `Pending` PVCs in this mode are expected behavior, not necessarily an error.
+
+---
+
+### 6. Internal connectivity testing (DNS and network)
+
+Using a temporary BusyBox pod, internal service connectivity was verified:
 
 - `nslookup postgres` → `postgres.nextcloud.svc.cluster.local`
 - `nc -zv postgres 5432` → `open`
 - `nslookup nextcloud` → `nextcloud.nextcloud.svc.cluster.local`
-- `wget -qO- http://nextcloud` → دریافت موفق صفحه HTML
+- `wget -qO- http://nextcloud` → successfully returned Nextcloud's HTML page
 
-این تست‌ها سلامت مسیر CoreDNS → Service → Pod را تأیید کردند.
-
----
-
-### ۷. تست Routing با IngressRoute
-
-با تعریف یک `IngressRoute` آزمایشی روی `nextcloud.local` و تست با `curl` (با هدر `Host` دستی)، کد پاسخ `200` دریافت شد. این موضوع صحت مسیر Traefik → IngressRoute → Service → Pod را تأیید کرد.
+These tests confirmed the CoreDNS → Service → Pod path was healthy.
 
 ---
 
-### ۸. خطای `405` هنگام تست Dashboard
+### 7. Routing test via IngressRoute
+
+A test `IngressRoute` was defined for `nextcloud.local`, and a `curl` request (with a manual `Host` header) returned HTTP `200`, confirming the Traefik → IngressRoute → Service → Pod path worked correctly.
+
+---
+
+### 8. `405` error when testing the Dashboard
 
 ```bash
 curl -I -H "Host: dashboard.localhost" http://81.12.50.30
 ```
 
-**علت:** درخواست `HEAD` (ناشی از فلگ `-I`) توسط Dashboard پشتیبانی نمی‌شد.
+**Cause:** The `HEAD` request (triggered by the `-I` flag) wasn't supported by the Dashboard.
 
-**راه‌حل:** استفاده از درخواست `GET` که پاسخ `302 Redirect` صحیح را برگرداند.
-
----
-
-### ۹. Certificate منقضی‌شده
-
-بررسی SSL نشان داد Certificate قبلی منقضی شده بود (`notAfter=Aug 25 2026`). Certificate جدید از نوع **Wildcard** (`*.rezaabolghasemi.ir`) از Let's Encrypt دریافت و جایگزین شد.
+**Fix:** Switched to a `GET` request, which correctly returned a `302 Redirect`.
 
 ---
 
-### ۱۰. اشتباه در مسیر فایل Private Key
+### 9. Expired certificate
 
-مسیر اشتباه:
+An SSL check revealed the previous certificate had expired (`notAfter=Aug 25 2026`). A new **wildcard** certificate (`*.rezaabolghasemi.ir`) from Let's Encrypt was obtained and put in place.
+
+---
+
+### 10. Wrong private key file path
+
+Wrong path:
 
 ```text
 /data/cert/private.key
 ```
 
-مسیر صحیح:
+Correct path:
 
 ```text
 /data/cert/privkey.pem
 ```
 
-با بررسی محتویات پوشه (`ls -lah`) مشکل شناسایی و اصلاح شد.
+The issue was found by listing the directory contents (`ls -lah`) and corrected.
 
 ---
 
-### ۱۱. عدم بروزرسانی خودکار Secret در Kubernetes
+### 11. Certificate files on disk don't auto-update the Kubernetes Secret
 
-**نکته کلیدی:** جایگزینی فایل Certificate روی دیسک سرور (`/data/cert/`) به‌تنهایی کافی نیست؛ Traefik گواهی را از **Kubernetes Secret** می‌خواند، نه مستقیماً از فایل روی سرور. بنابراین پس از هر تغییر Certificate، Secret مربوطه باید مجدداً با `kubectl create secret tls ... --dry-run=client -o yaml | kubectl apply -f -` بروزرسانی شود.
+**Key point:** Replacing the certificate file on the server (`/data/cert/`) alone is not enough — Traefik reads the certificate from a **Kubernetes Secret**, not directly from the server's filesystem. After every certificate renewal, the corresponding Secret must be re-applied with `kubectl create secret tls ... --dry-run=client -o yaml | kubectl apply -f -`.
 
 ---
 
-### ۱۲. خطای `404 page not found`
+### 12. `404 page not found` error
 
-پس از تنظیم SSL، خطای ۴۰۴ رخ داد که نیاز به بررسی زنجیره‌ای از اجزا داشت:
+After configuring SSL, a 404 error occurred, requiring a check across the full request chain:
 
 ```text
 DNS → Traefik Service → EntryPoint → IngressRoute → Service → Pod
 ```
 
-با بررسی EntryPointهای `web` (HTTP) و `websecure` (HTTPS) و اطمینان از Map شدن صحیح پورت‌های ۸۰/۴۴۳ مشکل برطرف شد.
+The issue was resolved by verifying the `web` (HTTP) and `websecure` (HTTPS) entry points and confirming ports 80/443 were correctly mapped.
 
 ---
 
-### ۱۳. مسیر نادرست برای دسترسی به Dashboard
+### 13. Wrong path for accessing the Dashboard
 
-آدرس ریشه (`/`) برای Dashboard مسیر معتبری نبود؛ آدرس صحیح دسترسی:
+The root path (`/`) is not a valid route for the Dashboard. The correct access URL is:
 
 ```text
 https://traefik.rezaabolghasemi.ir/dashboard/
@@ -216,11 +216,11 @@ https://traefik.rezaabolghasemi.ir/dashboard/
 
 ---
 
-### ۱۴. Redirect نادرست Nextcloud به HTTP
+### 14. Nextcloud incorrectly redirecting to HTTP
 
-از آنجا که ارتباط بین Traefik و Nextcloud داخل Cluster به‌صورت HTTP برقرار می‌شد، Nextcloud تصور می‌کرد کل اتصال HTTP است و کاربر را به آدرس `http://` ریدایرکت می‌کرد.
+Since the connection between Traefik and Nextcloud inside the cluster was plain HTTP, Nextcloud assumed the entire connection was HTTP and redirected users to an `http://` URL.
 
-**راه‌حل:** تنظیم آگاهی Nextcloud از Reverse Proxy:
+**Fix:** Made Nextcloud reverse-proxy aware:
 
 ```bash
 php occ config:system:set overwriteprotocol --value=https
@@ -230,58 +230,58 @@ php occ config:system:set overwrite.cli.url --value=https://cloud.rezaabolghasem
 
 ---
 
-## درس‌های کلیدی این پروژه
+## Key Lessons Learned
 
-1. **وجود Service به معنی سالم بودن برنامه نیست** — همیشه باید `pods`، `svc` و `endpoints` هر سه بررسی شوند.
-2. **Pending بودن PVC همیشه خطا نیست** — با StorageClass از نوع `WaitForFirstConsumer` طبیعی است.
-3. **DNS داخلی Kubernetes** بر پایه الگوی `service.namespace.svc.cluster.local` کار می‌کند.
-4. **Traefik صرفاً یک Reverse Proxy ساده نیست** — مسئول Routing، TLS Termination، Service Discovery، CRD Integration و Dashboard است.
-5. **Certificate روی سرور با Certificate داخل Kubernetes متفاوت است** — Traefik گواهی را از Secret می‌خواند، نه از فایل سرور.
-6. **برنامه پشت Reverse Proxy باید از وجود Proxy آگاه باشد** — تنظیماتی مانند `overwriteprotocol` و `trusted_proxies` برای این منظور ضروری‌اند.
+1. **A Service existing doesn't mean the app is healthy** — always check `pods`, `svc`, and `endpoints` together.
+2. **A `Pending` PVC isn't always an error** — it's expected with a `WaitForFirstConsumer` StorageClass.
+3. **Kubernetes internal DNS** follows the `service.namespace.svc.cluster.local` pattern.
+4. **Traefik is more than a simple reverse proxy** — it handles routing, TLS termination, service discovery, CRD integration, and the dashboard.
+5. **The certificate on disk and the certificate inside Kubernetes are different things** — Traefik reads certs from a Secret, not from the server's filesystem.
+6. **An app behind a reverse proxy must be aware of the proxy** — settings like `overwriteprotocol` and `trusted_proxies` exist for exactly this reason.
 
 ---
 
-## وضعیت فعلی پروژه
+## Current Project Status
 
-| بخش | وضعیت |
+| Component | Status |
 |---|---|
 | Kubernetes Node | ✅ Ready |
-| K3s | ✅ در حال اجرا |
+| K3s | ✅ Running |
 | CoreDNS | ✅ |
 | StorageClass | ✅ local-path |
 | PostgreSQL PVC | ✅ Bound |
 | PostgreSQL Pod | ✅ Running |
 | PostgreSQL Service | ✅ |
-| DNS داخلی PostgreSQL | ✅ |
+| Internal DNS (PostgreSQL) | ✅ |
 | Nextcloud PVC | ✅ Bound |
 | Nextcloud Pod | ✅ Running |
 | Nextcloud Service | ✅ |
-| DNS داخلی Nextcloud | ✅ |
+| Internal DNS (Nextcloud) | ✅ |
 | Traefik | ✅ Running |
 | Traefik LoadBalancer | ✅ |
-| Traefik CRD | ✅ |
-| IngressRoute Nextcloud | ✅ |
-| Routing داخلی Traefik | ✅ |
-| DNS دامنه‌ها | ✅ |
+| Traefik CRDs | ✅ |
+| Nextcloud IngressRoute | ✅ |
+| Internal Traefik routing | ✅ |
+| Domain DNS | ✅ |
 | TLS Secret | ✅ |
 | Wildcard Certificate | ✅ |
-| SSL Traefik | ✅ |
+| Traefik SSL | ✅ |
 | Traefik Dashboard | ✅ |
-| Traefik Dashboard HTTPS | ✅ |
-| Nextcloud HTTPS | ✅ |
+| Traefik Dashboard over HTTPS | ✅ |
+| Nextcloud over HTTPS | ✅ |
 | HTTPS Redirect Awareness | ✅ |
-| trusted_proxies | ⏳ مرحله بعد |
+| trusted_proxies | ⏳ Next step |
 
 ---
 
-## نقشه راه (مراحل بعدی)
+## Roadmap (Next Steps)
 
-1. **تکمیل `trusted_proxies`** — تعریف شبکه Pod (`10.42.0.0/24`) یا آدرس دقیق Traefik به‌عنوان Proxy مورد اعتماد Nextcloud.
-2. **HTTP → HTTPS Redirect** — ریدایرکت خودکار تمام درخواست‌های HTTP به HTTPS در سطح Traefik.
-3. **Security Headers** — افزودن هدرهایی مانند `Strict-Transport-Security`، `X-Content-Type-Options`، `X-Frame-Options` و `Referrer-Policy` از طریق Traefik Middleware.
-4. **Authentication برای Dashboard** — افزودن BasicAuth یا ForwardAuth برای جلوگیری از دسترسی عمومی به Dashboard.
-5. **Health Checks** — تنظیم بررسی سلامت برای سرویس‌ها.
-6. **Resource Limits** — تعیین `requests`/`limits` برای CPU و Memory سرویس‌های Nextcloud، PostgreSQL و Traefik.
-7. **Backup PostgreSQL** — پیاده‌سازی Backup زمان‌بندی‌شده با Kubernetes CronJob.
-8. **Backup Nextcloud Data** — پشتیبان‌گیری جداگانه از PVC داده‌های Nextcloud و پایگاه‌داده PostgreSQL.
-9. **Monitoring** — افزودن پایش وضعیت سرویس‌ها و منابع Cluster.
+1. **Complete `trusted_proxies` setup** — define the Pod network (`10.42.0.0/24`) or Traefik's exact address as a trusted proxy for Nextcloud.
+2. **HTTP → HTTPS redirect** — automatically redirect all HTTP requests to HTTPS at the Traefik level.
+3. **Security headers** — add headers such as `Strict-Transport-Security`, `X-Content-Type-Options`, `X-Frame-Options`, and `Referrer-Policy` via Traefik Middleware.
+4. **Dashboard authentication** — add BasicAuth or ForwardAuth to prevent public access to the Dashboard.
+5. **Health checks** — configure health checks for the services.
+6. **Resource limits** — set `requests`/`limits` for CPU and memory on Nextcloud, PostgreSQL, and Traefik.
+7. **PostgreSQL backups** — implement scheduled backups using a Kubernetes CronJob.
+8. **Nextcloud data backups** — separately back up the Nextcloud data PVC and the PostgreSQL database.
+9. **Monitoring** — add monitoring for service and cluster resource health.

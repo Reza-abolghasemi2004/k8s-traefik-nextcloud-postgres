@@ -27,9 +27,9 @@ Deploy the following architecture on a single-node Kubernetes cluster based on K
 
 | Item | Value |
 |---|---|
-| Nextcloud domain | `cloud.rezaabolghasemi.ir` |
-| Traefik Dashboard domain | `traefik.rezaabolghasemi.ir` |
-| Server IP | `81.12.50.30` |
+| Nextcloud domain | `cloud.domain.com` |
+| Traefik Dashboard domain | `traefik.domain.com` |
+| Server IP | `x.x.x.x` |
 | Kubernetes | K3s v1.36.3+k3s1 |
 | OS | Ubuntu 24.04.4 LTS |
 | Container Runtime | containerd |
@@ -44,7 +44,7 @@ Deploy the following architecture on a single-node Kubernetes cluster based on K
                                 Internet
                                     │
                      ┌──────────────▼──────────────┐
-                     │        81.12.50.30           │
+                     │           x.x.x.x           │
                      └──────────────┬──────────────┘
                                     │
                          HTTP 80 / HTTPS 443
@@ -57,7 +57,7 @@ Deploy the following architecture on a single-node Kubernetes cluster based on K
                                    │
               ┌────────────────────┴────────────────────┐
               ▼                                         ▼
- traefik.rezaabolghasemi.ir                cloud.rezaabolghasemi.ir
+      traefik.domain.com                       cloud.domain.com
    Path: /dashboard/                        Nextcloud IngressRoute
               │                                        │
               ▼                                        ▼
@@ -166,7 +166,7 @@ curl -I -H "Host: dashboard.localhost" http://81.12.50.30
 
 ### 9. Expired certificate
 
-An SSL check revealed the previous certificate had expired (`notAfter=Aug 25 2026`). A new **wildcard** certificate (`*.rezaabolghasemi.ir`) from Let's Encrypt was obtained and put in place.
+An SSL check revealed the previous certificate had expired (`notAfter=Aug 25 2026`). A new **wildcard** certificate (`*.domain.com`) from Let's Encrypt was obtained and put in place.
 
 ---
 
@@ -211,7 +211,7 @@ The issue was resolved by verifying the `web` (HTTP) and `websecure` (HTTPS) ent
 The root path (`/`) is not a valid route for the Dashboard. The correct access URL is:
 
 ```text
-https://traefik.rezaabolghasemi.ir/dashboard/
+https://traefik.domain.com/dashboard/
 ```
 
 ---
@@ -224,8 +224,8 @@ Since the connection between Traefik and Nextcloud inside the cluster was plain 
 
 ```bash
 php occ config:system:set overwriteprotocol --value=https
-php occ config:system:set overwritehost --value=cloud.rezaabolghasemi.ir
-php occ config:system:set overwrite.cli.url --value=https://cloud.rezaabolghasemi.ir
+php occ config:system:set overwritehost --value=cloud.domain.com
+php occ config:system:set overwrite.cli.url --value=https://cloud.domain.com
 ```
 
 ---
